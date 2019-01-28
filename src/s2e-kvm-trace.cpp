@@ -1,5 +1,5 @@
 ///
-/// Copyright (C) 2015-2017, Cyberhaven
+/// Copyright (C) 2015-2019, Cyberhaven
 /// All rights reserved.
 ///
 /// Licensed under the Cyberhaven Research License Agreement.
@@ -22,22 +22,27 @@
 #include <cpu/kvm.h>
 #include "s2e-kvm-interface.h"
 
+#include "s2e-kvm-trace.h"
+
+namespace s2e {
+namespace kvm {
+
 static struct kvm_run *s_kvm_run;
 static int s_kvm_vcpu_size;
 
-int handle_kvm_ioctl_trace(int fd, int request, uint64_t arg1) {
+int KVMTrace::ioctl(int fd, int request, uint64_t arg1) {
     int ret = -1;
 
     switch ((uint32_t) request) {
         case KVM_GET_API_VERSION:
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_API_VERSION", request, arg1, ret);
             break;
 
         case KVM_CHECK_EXTENSION:
             switch (arg1) {
                 case KVM_CAP_NR_MEMSLOTS: {
-                    ret = g_original_ioctl(fd, request, arg1);
+                    ret = m_ioctl(fd, request, arg1);
                 } break;
 
                 case KVM_CAP_MP_STATE:
@@ -61,7 +66,7 @@ int handle_kvm_ioctl_trace(int fd, int request, uint64_t arg1) {
             break;
 
         case KVM_CREATE_VM: {
-            int tmpfd = g_original_ioctl(fd, request, arg1);
+            int tmpfd = m_ioctl(fd, request, arg1);
             if (tmpfd < 0) {
                 printf("Could not create vm fd (errno=%d %s)\n", errno, strerror(errno));
                 exit(-1);
@@ -72,20 +77,20 @@ int handle_kvm_ioctl_trace(int fd, int request, uint64_t arg1) {
         } break;
 
         case KVM_GET_VCPU_MMAP_SIZE: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_VCPU_MMAP_SIZE", request, arg1,
                    ret);
             s_kvm_vcpu_size = ret;
         } break;
 
         case KVM_GET_MSR_INDEX_LIST: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_MSR_INDEX_LIST", request, arg1,
                    ret);
         } break;
 
         case KVM_GET_SUPPORTED_CPUID: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_SUPPORTED_CPUID", request, arg1,
                    ret);
         } break;
@@ -100,16 +105,16 @@ int handle_kvm_ioctl_trace(int fd, int request, uint64_t arg1) {
     return ret;
 }
 
-int handle_kvm_vm_ioctl_trace(int fd, int request, uint64_t arg1) {
+int KVMTraceVM::ioctl(int fd, int request, uint64_t arg1) {
     int ret = -1;
     switch (request) {
         case KVM_SET_TSS_ADDR: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_SET_TSS_ADDR", request, arg1, ret);
         } break;
 
         case KVM_CREATE_VCPU: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("Created vcpu %d\n", ret);
             g_kvm_vcpu_fd = ret;
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_CREATE_VCPU", request, arg1, ret);
@@ -117,21 +122,21 @@ int handle_kvm_vm_ioctl_trace(int fd, int request, uint64_t arg1) {
 
         case KVM_SET_USER_MEMORY_REGION: {
             trace_s2e_kvm_set_user_memory_region((struct kvm_userspace_memory_region *) arg1);
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
         } break;
 
         case KVM_SET_CLOCK: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_SET_CLOCK", request, arg1, ret);
         } break;
 
         case KVM_ENABLE_CAP: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_ENABLE_CAP", request, arg1, ret);
         } break;
 
         case KVM_IOEVENTFD: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_IOEVENTFD", request, arg1, ret);
             struct kvm_ioeventfd *event = (struct kvm_ioeventfd *) arg1;
             printf("    >kvm_ioeventd datamatch=%#llx addr=%llx len=%d fd=%d flags=%#" PRIx32 "\n", event->datamatch,
@@ -140,13 +145,13 @@ int handle_kvm_vm_ioctl_trace(int fd, int request, uint64_t arg1) {
         } break;
 
         case KVM_SET_IDENTITY_MAP_ADDR: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_SET_IDENTITY_MAP_ADDR", request, arg1,
                    ret);
         } break;
 
         case KVM_GET_DIRTY_LOG: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_DIRTY_LOG", request, arg1, ret);
         } break;
 
@@ -156,72 +161,72 @@ int handle_kvm_vm_ioctl_trace(int fd, int request, uint64_t arg1) {
     return ret;
 }
 
-int handle_kvm_vcpu_ioctl_trace(int fd, int request, uint64_t arg1) {
+int KVMTraceVCPU(int fd, int request, uint64_t arg1) {
     int ret = -1;
     switch ((uint32_t) request) {
         case KVM_GET_CLOCK: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_CLOCK", request, arg1, ret);
         } break;
 
         case KVM_SET_CPUID2: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_SET_CPUID2", request, arg1, ret);
         } break;
 
         case KVM_SET_SIGNAL_MASK: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_SET_SIGNAL_MASK", request, arg1, ret);
         } break;
 
         /***********************************************/
         case KVM_SET_REGS: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_SET_REGS", request, arg1, ret);
         } break;
 
         case KVM_SET_FPU: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_SET_FPU", request, arg1, ret);
         } break;
 
         case KVM_SET_SREGS: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_SET_SREGS", request, arg1, ret);
         } break;
 
         case KVM_SET_MSRS: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_SET_MSRS", request, arg1, ret);
         } break;
 
         case KVM_SET_MP_STATE: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_SET_MP_STATE", request, arg1, ret);
         } break;
         /***********************************************/
         case KVM_GET_REGS: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_REGS", request, arg1, ret);
         } break;
 
         case KVM_GET_FPU: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_FPU", request, arg1, ret);
         } break;
 
         case KVM_GET_SREGS: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_SREGS", request, arg1, ret);
         } break;
 
         case KVM_GET_MSRS: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_MSRS", request, arg1, ret);
         } break;
 
         case KVM_GET_MP_STATE: {
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x arg=%#" PRIx64 " ret=%#x\n", __FUNCTION__, "KVM_GET_MP_STATE", request, arg1, ret);
         } break;
 
@@ -235,13 +240,13 @@ int handle_kvm_vcpu_ioctl_trace(int fd, int request, uint64_t arg1) {
                 }
             }
 
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             trace_s2e_kvm_run(s_kvm_run, ret);
         } break;
 
         case KVM_INTERRUPT: {
             struct kvm_interrupt *interrupt = (struct kvm_interrupt *) arg1;
-            ret = g_original_ioctl(fd, request, arg1);
+            ret = m_ioctl(fd, request, arg1);
             printf("%s %s req=%#x irq=%#" PRIx32 " ret=%#x\n", __FUNCTION__, "KVM_INTERRUPT", request, interrupt->irq,
                    ret);
         } break;
@@ -274,4 +279,7 @@ void trace_s2e_kvm_run(struct kvm_run *run, int ret) {
 void trace_s2e_kvm_set_user_memory_region(struct kvm_userspace_memory_region *region) {
     printf("%s %s slot=%d guest_phys=%llx size=%llx vaddr=%llx flags=%x\n", __FUNCTION__, "KVM_SET_USER_MEMORY_REGION",
            region->slot, region->guest_phys_addr, region->memory_size, region->userspace_addr, region->flags);
+}
+
+}
 }

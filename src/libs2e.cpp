@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <memory>
 
 #undef __REDIRECT_NTH
 #include <sys/mman.h>
@@ -25,17 +26,21 @@
 #include <cpu/i386/cpu.h>
 #include <cpu/kvm.h>
 #include "s2e-kvm-interface.h"
+#include "s2e-kvm.h"
+#include "s2e-kvm-trace.h"
 
 #ifdef CONFIG_SYMBEX
 #include <s2e/s2e_log.h>
 #endif
 
+#include "FDManager.h"
+
 static open_t s_original_open;
 
 int g_trace = 0;
-int g_kvm_fd = -1;
-int g_kvm_vm_fd = -1;
-int g_kvm_vcpu_fd = -1;
+
+s2e::kvm::FileDescriptorManagerPtr g_fdm = std::make_shared<s2e::kvm::FileDescriptorManager>();
+
 
 int open64(const char *pathname, int flags, ...) {
     va_list list;
@@ -45,13 +50,25 @@ int open64(const char *pathname, int flags, ...) {
 
     if (!strcmp(pathname, "/dev/kvm")) {
         printf("Opening %s\n", pathname);
-        int fd = s_original_open("/dev/null", flags, mode);
+
+        s2e::kvm::IFilePtr kvm;
+
+        if (g_trace) {
+            kvm = s2e::kvm::S2EKVM::Create();
+        } else {
+            kvm = s2e::kvm::KVMTrace::Create();
+        }
+
+        if (!kvm) {
+            return -1;
+        }
+
+        int fd = g_fdm->Register(kvm);
         if (fd < 0) {
-            printf("Could not open fake kvm /dev/null\n");
+            printf("Could not register fake kvm file descriptor\n");
             exit(-1);
         }
 
-        g_kvm_fd = fd;
         return fd;
     } else {
         return s_original_open(pathname, flags, mode);
@@ -60,10 +77,7 @@ int open64(const char *pathname, int flags, ...) {
 
 static close_t s_original_close;
 int close64(int fd) {
-    if (fd == g_kvm_fd) {
-        printf("close %d\n", fd);
-        close(fd);
-        g_kvm_fd = -1;
+    if (g_fdm->Close(fd)) {
         return 0;
     } else {
         return s_original_close(fd);
@@ -72,285 +86,22 @@ int close64(int fd) {
 
 static write_t s_original_write;
 ssize_t write(int fd, const void *buf, size_t count) {
-    if (fd == g_kvm_fd || fd == g_kvm_vm_fd) {
-        printf("write %d count=%ld\n", fd, count);
-        exit(-1);
+    auto ifp = g_fdm->Get(fd);
+    if (ifp) {
+        return ifp->write(fd, buf, count);
     } else {
         return s_original_write(fd, buf, count);
     }
 }
 
-static int handle_kvm_ioctl(int fd, int request, uint64_t arg1) {
-    int ret = -1;
-
-    switch ((uint32_t) request) {
-        case KVM_GET_API_VERSION:
-            return s2e_kvm_get_api_version();
-
-        case KVM_CHECK_EXTENSION:
-            ret = s2e_kvm_check_extension(fd, arg1);
-            if (ret < 0) {
-                errno = 1;
-            }
-            break;
-
-        case KVM_CREATE_VM: {
-            int tmpfd = s2e_kvm_create_vm(fd);
-            if (tmpfd < 0) {
-                printf("Could not create vm fd (errno=%d %s)\n", errno, strerror(errno));
-                exit(-1);
-            }
-            g_kvm_vm_fd = tmpfd;
-            ret = tmpfd;
-        } break;
-
-        case KVM_GET_VCPU_MMAP_SIZE: {
-            ret = s2e_kvm_get_vcpu_mmap_size();
-        } break;
-
-        case KVM_GET_MSR_INDEX_LIST: {
-            ret = s2e_kvm_get_msr_index_list(fd, (struct kvm_msr_list *) arg1);
-        } break;
-
-        case KVM_GET_SUPPORTED_CPUID: {
-            ret = s2e_kvm_get_supported_cpuid(fd, (struct kvm_cpuid2 *) arg1);
-        } break;
-
-        default: {
-            fprintf(stderr, "libs2e: unknown KVM IOCTL %x\n", request);
-            exit(-1);
-        }
-    }
-
-    return ret;
-}
-
-static int handle_kvm_vm_ioctl(int fd, int request, uint64_t arg1) {
-    int ret = -1;
-    switch ((uint32_t) request) {
-        case KVM_CHECK_EXTENSION:
-            ret = s2e_kvm_check_extension(fd, arg1);
-            if (ret < 0) {
-                errno = 1;
-            }
-            break;
-
-        case KVM_SET_TSS_ADDR: {
-            ret = s2e_kvm_vm_set_tss_addr(fd, arg1);
-        } break;
-
-        case KVM_CREATE_VCPU: {
-            ret = s2e_kvm_vm_create_vcpu(fd);
-        } break;
-
-        case KVM_SET_USER_MEMORY_REGION: {
-            ret = s2e_kvm_vm_set_user_memory_region(fd, (struct kvm_userspace_memory_region *) arg1);
-        } break;
-
-        case KVM_SET_CLOCK: {
-            ret = s2e_kvm_vm_set_clock(fd, (struct kvm_clock_data *) arg1);
-        } break;
-
-        case KVM_GET_CLOCK: {
-            ret = s2e_kvm_vm_get_clock(fd, (struct kvm_clock_data *) arg1);
-        } break;
-
-        case KVM_ENABLE_CAP: {
-            ret = s2e_kvm_vm_enable_cap(fd, (struct kvm_enable_cap *) arg1);
-        } break;
-
-        case KVM_IOEVENTFD: {
-            ret = s2e_kvm_vm_ioeventfd(fd, (struct kvm_ioeventfd *) arg1);
-        } break;
-
-        case KVM_SET_IDENTITY_MAP_ADDR: {
-            ret = s2e_kvm_vm_set_identity_map_addr(fd, arg1);
-        } break;
-
-        case KVM_GET_DIRTY_LOG: {
-            ret = s2e_kvm_vm_get_dirty_log(fd, (struct kvm_dirty_log *) arg1);
-        } break;
-
-        case KVM_MEM_RW: {
-            ret = s2e_kvm_vm_mem_rw(fd, (struct kvm_mem_rw *) arg1);
-        } break;
-
-        case KVM_FORCE_EXIT: {
-            s2e_kvm_request_exit();
-            ret = 0;
-        } break;
-
-        case KVM_MEM_REGISTER_FIXED_REGION: {
-            ret = s2e_kvm_vm_register_fixed_region(fd, (struct kvm_fixed_region *) arg1);
-        } break;
-
-        case KVM_DISK_RW: {
-            ret = s2e_kvm_vm_disk_rw(fd, (struct kvm_disk_rw *) arg1);
-        } break;
-
-        case KVM_DEV_SNAPSHOT: {
-            ret = s2e_kvm_vm_dev_snapshot(fd, (struct kvm_dev_snapshot *) arg1);
-        } break;
-
-        case KVM_SET_CLOCK_SCALE: {
-            ret = s2e_kvm_set_clock_scale_ptr(fd, (unsigned *) arg1);
-        } break;
-
-        default: {
-            fprintf(stderr, "libs2e: unknown KVM VM IOCTL %x\n", request);
-            exit(-1);
-        }
-    }
-
-    return ret;
-}
-
-static int handle_kvm_vcpu_ioctl(int fd, int request, uint64_t arg1) {
-    int ret = -1;
-    switch ((uint32_t) request) {
-        case KVM_GET_CLOCK: {
-            ret = s2e_kvm_vcpu_get_clock(fd, (struct kvm_clock_data *) arg1);
-        } break;
-
-        case KVM_SET_CPUID2: {
-            ret = s2e_kvm_vcpu_set_cpuid2(fd, (struct kvm_cpuid2 *) arg1);
-        } break;
-
-        case KVM_SET_SIGNAL_MASK: {
-            ret = s2e_kvm_vcpu_set_signal_mask(fd, (struct kvm_signal_mask *) arg1);
-        } break;
-
-        /***********************************************/
-        // When the symbolic execution engine needs to take a system snapshot,
-        // it must rely on the KVM client to save the device state. That client
-        // will typically also save/restore the CPU state. We don't want the client
-        // to do that, so in order to not modify the client too much, we ignore
-        // the calls to register setters when they are done in the context of
-        // device state snapshotting.
-        case KVM_SET_REGS: {
-            if (g_handling_dev_state) {
-                ret = 0;
-            } else {
-                ret = s2e_kvm_vcpu_set_regs(fd, (struct kvm_regs *) arg1);
-            }
-        } break;
-
-        case KVM_SET_FPU: {
-            if (g_handling_dev_state) {
-                ret = 0;
-            } else {
-                ret = s2e_kvm_vcpu_set_fpu(fd, (struct kvm_fpu *) arg1);
-            }
-        } break;
-
-        case KVM_SET_SREGS: {
-            if (g_handling_dev_state) {
-                ret = 0;
-            } else {
-                ret = s2e_kvm_vcpu_set_sregs(fd, (struct kvm_sregs *) arg1);
-            }
-        } break;
-
-        case KVM_SET_MSRS: {
-            if (g_handling_dev_state) {
-                ret = ((struct kvm_msrs *) arg1)->nmsrs;
-            } else {
-                ret = s2e_kvm_vcpu_set_msrs(fd, (struct kvm_msrs *) arg1);
-            }
-        } break;
-
-        case KVM_SET_MP_STATE: {
-            if (g_handling_dev_state) {
-                ret = 0;
-            } else {
-                ret = s2e_kvm_vcpu_set_mp_state(fd, (struct kvm_mp_state *) arg1);
-            }
-        } break;
-        /***********************************************/
-        case KVM_GET_REGS: {
-            if (g_handling_dev_state) {
-                // Poison the returned registers to make sure we don't use
-                // it again by accident. We can't just fail the call because
-                // the client needs it to save the cpu state (that we ignore).
-                memset((void *) arg1, 0xff, sizeof(struct kvm_regs));
-                ret = 0;
-            } else {
-                ret = s2e_kvm_vcpu_get_regs(fd, (struct kvm_regs *) arg1);
-            }
-        } break;
-
-        case KVM_GET_FPU: {
-            ret = s2e_kvm_vcpu_get_fpu(fd, (struct kvm_fpu *) arg1);
-        } break;
-
-        case KVM_GET_SREGS: {
-            ret = s2e_kvm_vcpu_get_sregs(fd, (struct kvm_sregs *) arg1);
-        } break;
-
-        case KVM_GET_MSRS: {
-            ret = s2e_kvm_vcpu_get_msrs(fd, (struct kvm_msrs *) arg1);
-        } break;
-
-        case KVM_GET_MP_STATE: {
-            ret = s2e_kvm_vcpu_get_mp_state(fd, (struct kvm_mp_state *) arg1);
-        } break;
-
-        /***********************************************/
-        case KVM_RUN: {
-            return s2e_kvm_vcpu_run(fd);
-        } break;
-
-        case KVM_INTERRUPT: {
-            ret = s2e_kvm_vcpu_interrupt(fd, (struct kvm_interrupt *) arg1);
-        } break;
-
-        case KVM_NMI: {
-            ret = s2e_kvm_vcpu_nmi(fd);
-        } break;
-
-        default: {
-            fprintf(stderr, "libs2e: unknown KVM VCPU IOCTL vcpu %d request=%#x arg=%#" PRIx64 " ret=%#x\n", fd,
-                    request, arg1, ret);
-            exit(-1);
-        }
-    }
-
-    return ret;
-}
-
 ioctl_t g_original_ioctl;
 int ioctl(int fd, int request, uint64_t arg1) {
-    int ret = -1;
-
-    if (g_trace) {
-        if (fd == g_kvm_fd) {
-            // printf("ioctl %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
-            ret = handle_kvm_ioctl_trace(fd, request, arg1);
-        } else if (fd == g_kvm_vm_fd) {
-            // printf("ioctl vm %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
-            ret = handle_kvm_vm_ioctl_trace(fd, request, arg1);
-        } else if (fd == g_kvm_vcpu_fd) {
-            ret = handle_kvm_vcpu_ioctl_trace(fd, request, arg1);
-        } else {
-            // printf("ioctl on %d\n", fd);
-            ret = g_original_ioctl(fd, request, arg1);
-        }
+    auto ifp = g_fdm->Get(fd);
+    if (ifp) {
+        return ifp->ioctl(fd, request, arg1);
     } else {
-        if (fd == g_kvm_fd) {
-            // printf("ioctl %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
-            ret = handle_kvm_ioctl(fd, request, arg1);
-        } else if (fd == g_kvm_vm_fd) {
-            // printf("ioctl vm %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
-            ret = handle_kvm_vm_ioctl(fd, request, arg1);
-        } else if (fd == g_kvm_vcpu_fd) {
-            ret = handle_kvm_vcpu_ioctl(fd, request, arg1);
-        } else {
-            // printf("ioctl on %d\n", fd);
-            ret = g_original_ioctl(fd, request, arg1);
-        }
+        return g_original_ioctl(fd, request, arg1);
     }
-
-    return ret;
 }
 
 static poll_t s_original_poll;
@@ -375,45 +126,38 @@ void exit(int code) {
 
 static mmap_t s_original_mmap;
 void *mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset) {
-    if (fd < 0 || (fd != g_kvm_vcpu_fd)) {
+    auto ifp = g_fdm->Get(fd);
+    if (ifp) {
+        return ifp->mmap(addr, len, prot, flags, fd, offset);
+    } else {
         return s_original_mmap(addr, len, prot, flags, fd, offset);
     }
-
-    int real_size = s2e_kvm_get_vcpu_mmap_size();
-    assert(real_size == len);
-    assert(g_kvm_vcpu_buffer);
-
-    return g_kvm_vcpu_buffer;
 }
 
 static mmap_t s_original_mmap64;
 void *mmap64(void *addr, size_t len, int prot, int flags, int fd, off_t offset) {
-    if (fd < 0 || (fd != g_kvm_vcpu_fd)) {
+    auto ifp = g_fdm->Get(fd);
+    if (ifp) {
+        return ifp->mmap(addr, len, prot, flags, fd, offset);
+    } else {
         return s_original_mmap64(addr, len, prot, flags, fd, offset);
     }
-
-    int real_size = s2e_kvm_get_vcpu_mmap_size();
-    assert(real_size == len);
-    assert(g_kvm_vcpu_buffer);
-
-    return g_kvm_vcpu_buffer;
 }
 
 static dup_t s_original_dup;
 int dup(int fd) {
-    if (fd == g_kvm_vcpu_fd) {
-        // This should work most of the time, but may break if the client
-        // assumes that the returned fd must be different.
-        return g_kvm_vcpu_fd;
+    auto ifp = g_fdm->Get(fd);
+    if (ifp) {
+        return g_fdm->Register(ifp);
+    } else {
+        return s_original_dup(fd);
     }
-
-    return s_original_dup(fd);
 }
 
 static madvise_t s_original_madvise;
 int madvise(void *addr, size_t len, int advice) {
     if (advice & MADV_DONTFORK) {
-        // We must fork all memory for multi-core more
+        // We must fork all memory for multi-core mode
         advice &= ~MADV_DONTFORK;
     }
 
