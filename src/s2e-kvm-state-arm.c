@@ -339,25 +339,29 @@ int s2e_kvm_arch_vcpu_ioctl_vcpu_init(int vcpu_fd,struct kvm_vcpu_init *init)
 
 }
 
+#define WR_cpu(cpu, reg, value) \
+    g_sqi.regs.write_concrete(offsetof(CPUARMState, reg), (uint8_t *) &value, sizeof(target_ulong))
+#define RR_cpu(cpu, reg, value) \
+    g_sqi.regs.read_concrete(offsetof(CPUARMState, reg), (uint8_t *) &value, sizeof(target_ulong))
 
 int s2e_kvm_vcpu_set_regs(int vcpu_fd, struct kvm_m_regs *regs) {
 #ifdef CONFIG_SYMBEX
-    WR_cpu(env, regs[0], regs[0]);
-    WR_cpu(env, regs[1], regs[1]);
-    WR_cpu(env, regs[2], regs[2]);
-    WR_cpu(env, regs[3], regs[3]);
-    WR_cpu(env, regs[4], regs[4]);
-    WR_cpu(env, regs[5], regs[5]);
-    WR_cpu(env, regs[6], regs[6]);
-    WR_cpu(env, regs[7], regs[7]);
-    WR_cpu(env, regs[8], regs[8]);
-    WR_cpu(env, regs[9], regs[9]);
-    WR_cpu(env, regs[10], regs[10]);
-    WR_cpu(env, regs[11], regs[11]);
-    WR_cpu(env, regs[12], regs[12]);
-    WR_cpu(env, regs[13], regs[13]);
-    WR_cpu(env, regs[14], regs[14]);
-    WR_cpu(env, regs[15], regs[15]);
+    WR_cpu(env, regs[0], regs->regs[0]);
+    WR_cpu(env, regs[1], regs->regs[1]);
+    WR_cpu(env, regs[2], regs->regs[2]);
+    WR_cpu(env, regs[3], regs->regs[3]);
+    WR_cpu(env, regs[4], regs->regs[4]);
+    WR_cpu(env, regs[5], regs->regs[5]);
+    WR_cpu(env, regs[6], regs->regs[6]);
+    WR_cpu(env, regs[7], regs->regs[7]);
+    WR_cpu(env, regs[8], regs->regs[8]);
+    WR_cpu(env, regs[9], regs->regs[9]);
+    WR_cpu(env, regs[10], regs->regs[10]);
+    WR_cpu(env, regs[11], regs->regs[11]);
+    WR_cpu(env, regs[12], regs->regs[12]);
+    WR_cpu(env, regs[13], regs->regs[13]);
+    WR_cpu(env, regs[14], regs->regs[14]);
+    WR_cpu(env, regs[15], regs->regs[15]);
 #else
     env->regs[0] = regs->regs[0];
     env->regs[1] = regs->regs[1];
@@ -418,6 +422,9 @@ int s2e_kvm_vcpu_set_sregs(int vcpu_fd, struct kvm_m_sregs *sregs) {
     return 0;
 }
 
+
+
+
 int s2e_kvm_vcpu_get_regs(int vcpu_fd, struct kvm_m_regs *regs) {
     if (!g_cpu_state_is_precise) {
         // Probably OK to let execution continue
@@ -425,22 +432,22 @@ int s2e_kvm_vcpu_get_regs(int vcpu_fd, struct kvm_m_regs *regs) {
     }
 
 #ifdef CONFIG_SYMBEX
-    RR_cpu(env, regs[R_EAX], regs->rax);
-    RR_cpu(env, regs[R_EBX], regs->rbx);
-    RR_cpu(env, regs[R_ECX], regs->rcx);
-    RR_cpu(env, regs[R_EDX], regs->rdx);
-    RR_cpu(env, regs[R_ESI], regs->rsi);
-    RR_cpu(env, regs[R_EDI], regs->rdi);
-    RR_cpu(env, regs[R_ESP], regs->rsp);
-    RR_cpu(env, regs[R_EBP], regs->rbp);
-    RR_cpu(env, regs[8], regs->r8);
-    RR_cpu(env, regs[9], regs->r9);
-    RR_cpu(env, regs[10], regs->r10);
-    RR_cpu(env, regs[11], regs->r11);
-    RR_cpu(env, regs[12], regs->r12);
-    RR_cpu(env, regs[13], regs->r13);
-    RR_cpu(env, regs[14], regs->r14);
-    RR_cpu(env, regs[15], regs->r15);
+    RR_cpu(env, regs[0], regs->regs[0]);
+    RR_cpu(env, regs[1], regs->regs[1]);
+    RR_cpu(env, regs[2], regs->regs[2]);
+    RR_cpu(env, regs[3], regs->regs[3]);
+    RR_cpu(env, regs[4], regs->regs[4]);
+    RR_cpu(env, regs[5], regs->regs[5]);
+    RR_cpu(env, regs[6], regs->regs[6]);
+    RR_cpu(env, regs[7], regs->regs[7]);
+    RR_cpu(env, regs[8], regs->regs[8]);
+    RR_cpu(env, regs[9], regs->regs[9]);
+    RR_cpu(env, regs[10], regs->regs[10]);
+    RR_cpu(env, regs[11], regs->regs[11]);
+    RR_cpu(env, regs[12], regs->regs[12]);
+    RR_cpu(env, regs[13], regs->regs[13]);
+    RR_cpu(env, regs[14], regs->regs[14]);
+    RR_cpu(env, regs[15], regs->regs[15]);
 #else
     regs->regs[0] = env->regs[0];
     regs->regs[1] = env->regs[1];

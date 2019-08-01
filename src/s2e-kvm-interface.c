@@ -404,6 +404,10 @@ int s2e_kvm_create_vm(int kvm_fd) {
 
 #if defined(TARGET_I386) || defined(TARGET_X86_64)
     do_cpu_init(env);
+#elif defined(TARGET_ARM)
+    do_cpu_arm_init(env);
+#else
+#error Unsupported target architecture
 #endif
 
     return fd;
