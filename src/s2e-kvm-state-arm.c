@@ -362,6 +362,7 @@ int s2e_kvm_vcpu_set_regs(int vcpu_fd, struct kvm_m_regs *regs) {
     WR_cpu(env, regs[13], regs->regs[13]);
     WR_cpu(env, regs[14], regs->regs[14]);
     WR_cpu(env, regs[15], regs->regs[15]);
+    printf("r15=%#x\n",env->regs[15]);
 #else
     env->regs[0] = regs->regs[0];
     env->regs[1] = regs->regs[1];

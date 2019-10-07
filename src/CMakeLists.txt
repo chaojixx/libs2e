@@ -69,7 +69,7 @@ set(LIBS ${LIBS} ${LIBCOROUTINE_LIBRARY_DIR}/libcoroutine.a  ${CAPSTONE_LIB_DIR}
 
 
 
-target_link_libraries(tests2e PUBLIC ${LIBCOROUTINE_LIBRARY_DIR}/libcoroutine.a pthread glib-2.0)
+target_link_libraries(tests2e PUBLIC ${LIBCOROUTINE_LIBRARY_DIR}/libcoroutine.a protobuf pthread glib-2.0)
 target_link_libraries(s2e ${LIBS})
 
 set(WERROR_FLAGS "-Werror -Wno-zero-length-array -Wno-c99-extensions          \

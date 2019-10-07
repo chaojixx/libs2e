@@ -437,23 +437,23 @@ int ioctl(int fd, int request, uint64_t arg1) {
 
     if (g_trace) {
         if (fd == g_kvm_fd) {
-            // printf("ioctl %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
+            printf("ioctl %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
             ret = handle_kvm_ioctl_trace(fd, request, arg1);
         } else if (fd == g_kvm_vm_fd) {
-            // printf("ioctl vm %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
+            printf("ioctl vm %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
             ret = handle_kvm_vm_ioctl_trace(fd, request, arg1);
         } else if (fd == g_kvm_vcpu_fd) {
             ret = handle_kvm_vcpu_ioctl_trace(fd, request, arg1);
         } else {
-            // printf("ioctl on %d\n", fd);
+            printf("ioctl on %d\n", fd);
             ret = g_original_ioctl(fd, request, arg1);
         }
     } else {
         if (fd == g_kvm_fd) {
-            // printf("ioctl %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
+           // printf("ioctl %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
             ret = handle_kvm_ioctl(fd, request, arg1);
         } else if (fd == g_kvm_vm_fd) {
-            // printf("ioctl vm %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
+            //printf("ioctl vm %d request=%#x arg=%#"PRIx64" ret=%#x\n", fd, request, arg1, ret);
             ret = handle_kvm_vm_ioctl(fd, request, arg1);
         } else if (fd == g_kvm_vcpu_fd) {
 			#if defined(TARGET_I386) || defined(TARGET_X86_64)
@@ -553,12 +553,12 @@ int madvise(void *addr, size_t len, int advice) {
 static printf_t s_original_printf;
 int printf(const char *fmt, ...) {
     va_list vl;
-    va_start(vl, fmt);
-    int ret = vprintf(fmt, vl);
-    va_end(vl);
+//    va_start(vl, fmt);
+//    int ret = vprintf(fmt, vl);
+//    va_end(vl);
 
     va_start(vl, fmt);
-    s2e_vprintf(fmt, false, vl);
+    int ret=s2e_vprintf(fmt, false, vl);
     va_end(vl);
 
     return ret;
