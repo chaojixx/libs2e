@@ -816,13 +816,17 @@ int s2e_kvm_vcpu_run(int vcpu_fd) {
         errno = EINTR;
         return -1;
     }
-
+    //add exit reason for msr basepri
+    if (env->kvm_exit_code == 1) {
+        g_kvm_vcpu_buffer->exit_reason = KVM_EXIT_SYNC_ARM_V7M_SREGS;
+    }
     g_handling_kvm_cb = g_kvm_vcpu_buffer->exit_reason == KVM_EXIT_IO ||
                         g_kvm_vcpu_buffer->exit_reason == KVM_EXIT_MMIO ||
                         g_kvm_vcpu_buffer->exit_reason == KVM_EXIT_FLUSH_DISK ||
                         g_kvm_vcpu_buffer->exit_reason == KVM_EXIT_SAVE_DEV_STATE ||
                         g_kvm_vcpu_buffer->exit_reason == KVM_EXIT_RESTORE_DEV_STATE ||
-                        g_kvm_vcpu_buffer->exit_reason == KVM_EXIT_CLONE_PROCESS;
+                        g_kvm_vcpu_buffer->exit_reason == KVM_EXIT_CLONE_PROCESS ||
+                        g_kvm_vcpu_buffer->exit_reason == KVM_EXIT_SYNC_ARM_V7M_SREGS;
 
     // Might not be NULL if resuming from an interrupted I/O
     // assert(env->current_tb == NULL);

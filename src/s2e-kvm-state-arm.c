@@ -63,7 +63,6 @@ extern CPUArchState *env;
 
 static inline long copy_from_user(void *to, const void *from, unsigned long n)
 {
-
 	memcpy(to, from, n);
 	return 0;
 }
@@ -72,7 +71,6 @@ static inline long copy_from_user(void *to, const void *from, unsigned long n)
 
 static inline long copy_to_user(void *to, const void *from, unsigned long n)
 {
-
 	memcpy(to, from, n);
 	return 0;
 }
@@ -326,15 +324,10 @@ int s2e_kvm_vcpu_get_mp_state(int vcpu_fd, struct kvm_mp_state *mp) {
 
 int s2e_kvm_arch_vcpu_ioctl_vcpu_init(int vcpu_fd,struct kvm_vcpu_init *init)
 {
-/*	int ret;
 
-	.usr_regs.ARM_cpsr = SVC_MODE | PSR_A_BIT | PSR_I_BIT | PSR_F_BIT;
+// have not been implemented, so firmware with cortex-A arch may not be successfully init
 
 
-	ret = kvm_vcpu_set_target(vcpu, init);
-	if (ret)
-		return ret;
-*/
 	return -1;
 
 }
@@ -369,7 +362,7 @@ int s2e_kvm_vcpu_set_regs(int vcpu_fd, struct kvm_m_regs *regs) {
     env->regs[2] = regs->regs[2];
     env->regs[3] = regs->regs[3];
     env->regs[4] = regs->regs[4];
-    env->regs[5] =regs->regs[5];
+    env->regs[5] = regs->regs[5];
     env->regs[6] = regs->regs[6];
     env->regs[7] = regs->regs[7];
     env->regs[8] = regs->regs[8];
@@ -382,28 +375,6 @@ int s2e_kvm_vcpu_set_regs(int vcpu_fd, struct kvm_m_regs *regs) {
     env->regs[15] = regs->regs[15];
     printf("r15=%#x\n",env->regs[15]);
 #endif
-
-//
-//    if (regs->rip != env->eip) {
-//        if (g_handling_kvm_cb || !g_cpu_state_is_precise) {
-//            // We don't support this at all, it's better to crash than to risk
-//            // guest corruption.
-//            abort();
-//        }
-//    }
-
-//    env->eip = regs->rip;
-//
-//    if (g_handling_kvm_cb) {
-//        fprintf(stderr, "warning: kvm setting cpu state while handling io\n");
-//        // TODO: try to set the system part of the flags register.
-//        // It should be OK to skip these because the KVM client usually writes
-//        // back the value it has just read when KVM_RUN exits. That value
-//        // is already stored in the CPU state of the symbex engine.
-//        assert(regs->rflags == env->mflags);
-//    } else {
-//        cpu_set_eflags(env, regs->rflags);
-//    }
 
     return 0;
 }
@@ -422,8 +393,6 @@ int s2e_kvm_vcpu_set_sregs(int vcpu_fd, struct kvm_m_sregs *sregs) {
 	printf("thumb=%#x\n", env->thumb);
     return 0;
 }
-
-
 
 
 int s2e_kvm_vcpu_get_regs(int vcpu_fd, struct kvm_m_regs *regs) {
@@ -468,21 +437,10 @@ int s2e_kvm_vcpu_get_regs(int vcpu_fd, struct kvm_m_regs *regs) {
     regs->regs[15] = env->regs[15];
 #endif
 
-//    regs->rip = env->eip;
-//
-//    if (!g_handling_kvm_cb) {
-//        regs->rflags = cpu_get_eflags(env);
-//    } else {
-//        fprintf(stderr, "warning: kvm asking cpu state while handling io\n");
-//        // We must at least give the system flags to the KVM client, which
-//        // may use them to compute the segment registers.
-//        regs->rflags = env->mflags;
-//    }
-
     return 0;
 }
+
 int s2e_kvm_vcpu_get_sregs(int vcpu_fd, struct kvm_m_sregs *sregs) {
-    // XXX: what about the interrupt bitmap?
 
 	sregs->other_sp = env->v7m.other_sp;
 	sregs->vecbase = env->v7m.vecbase;
@@ -492,17 +450,18 @@ int s2e_kvm_vcpu_get_sregs(int vcpu_fd, struct kvm_m_sregs *sregs) {
 	sregs->exception = env->v7m.exception;
 	sregs->pending_exception = env->v7m.pending_exception;
 	sregs->thumb = env->thumb;
+	printf("sregs basepri=%#x\n",sregs->basepri);
+	printf("sregs control=%#x\n", sregs->control);
+// sregs have been synced, so reset the exit code
+    env->kvm_exit_code = 0;
     return 0;
 }
+
 int s2e_kvm_vm_ioctl_irq_line(int vcpu_fd, struct kvm_irq_level *irq_level){
 
-//	unsigned int irq = irq_level->irq;
-//	unsigned int irq_num;
 	bool level = irq_level->level;
     arm_cpu_set_irq(env,level);   
     return 0;
-	//irq_type = (irq >> KVM_ARM_IRQ_TYPE_SHIFT) & KVM_ARM_IRQ_TYPE_MASK;
-	//irq_num = (irq >> KVM_ARM_IRQ_NUM_SHIFT) & KVM_ARM_IRQ_NUM_MASK;
 
 }
 
