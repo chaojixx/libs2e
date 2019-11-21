@@ -385,10 +385,6 @@ int VCPU::run(int vcpu_fd) {
         return -1;
     }
 
-    // add exit reason for msr basepri
-    if (m_env->kvm_exit_code == 1) {
-        m_cpuBuffer->exit_reason = KVM_EXIT_SYNC_ARM_V7M_SREGS;
-    }
     m_handlingKvmCallback =
         m_cpuBuffer->exit_reason == KVM_EXIT_IO || m_cpuBuffer->exit_reason == KVM_EXIT_MMIO ||
         m_cpuBuffer->exit_reason == KVM_EXIT_FLUSH_DISK || m_cpuBuffer->exit_reason == KVM_EXIT_SAVE_DEV_STATE ||
@@ -409,9 +405,17 @@ int VCPU::run(int vcpu_fd) {
     if (m_cpuBuffer->exit_reason == -1) {
         if (m_env->halted) {
             m_cpuBuffer->exit_reason = KVM_EXIT_HLT;
-        } else if (m_cpuBuffer->ready_for_interrupt_injection) {
+        }
+#if defined(TARGET_ARM)
+        // add exit reason for arm cortex-m sregs sync (e.g., msr basepri)
+        else if (m_env->kvm_exit_code) {
+            m_cpuBuffer->exit_reason = KVM_EXIT_SYNC_ARM_V7M_SREGS;
+        }
+#endif
+        else if (m_cpuBuffer->ready_for_interrupt_injection) {
             m_cpuBuffer->exit_reason = KVM_EXIT_IRQ_WINDOW_OPEN;
-        } else {
+        }
+        else {
             m_cpuBuffer->exit_reason = KVM_EXIT_INTR;
             m_signalPending = false;
         }
