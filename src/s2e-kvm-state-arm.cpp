@@ -163,8 +163,7 @@ int VCPU::getSRegs(kvm_m_sregs *sregs) {
     sregs->thumb = m_env->thumb;
     printf("sregs basepri=%#x\n", sregs->basepri);
     printf("sregs control=%#x\n", sregs->control);
-    // sregs have been synced, so reset the exit code
-    m_env->kvm_exit_code = 0;
+
     return 0;
 }
 
