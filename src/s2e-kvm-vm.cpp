@@ -148,6 +148,19 @@ int VM::registerFixedRegion(kvm_fixed_region *region) {
     return 0;
 }
 
+#ifdef CONFIG_SYMBEX
+#if defined(TARGET_ARM)
+int VM::initMemRegions(kvm_mem_init *mem_init) {
+    int ret;
+    ret = s2e_init_mem(&mem_init->baseaddr, &mem_init->size, &mem_init->num, &mem_init->is_rom);
+    if (ret < 0) {
+        errno = 1;
+    }
+    return ret;
+}
+#endif
+#endif
+
 int VM::getDirtyLog(kvm_dirty_log *log) {
     m_cpu->requestExit();
 
@@ -309,6 +322,10 @@ int VM::sys_ioctl(int fd, int request, uint64_t arg1) {
         case KVM_IRQ_LINE: {
             m_cpu->setIrqLine((kvm_irq_level *) arg1);
             ret = 0;
+        } break;
+
+        case KVM_MEM_REGION_INIT: {
+            ret = initMemRegions((kvm_mem_init *) arg1);
         } break;
 #endif
         default: {
