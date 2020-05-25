@@ -66,7 +66,6 @@ int VCPU::setRegs(kvm_m_regs *regs) {
     m_env->regs[14] = regs->regs[14];
 #endif
     m_env->regs[15] = regs->regs[15];
-    printf("r15=%#x\n", m_env->regs[15]);
 
     return 0;
 }
@@ -161,8 +160,8 @@ int VCPU::getSRegs(kvm_m_sregs *sregs) {
     sregs->exception = m_env->v7m.exception;
     sregs->pending_exception = m_env->v7m.pending_exception;
     sregs->thumb = m_env->thumb;
-    printf("sregs basepri=%#x\n", sregs->basepri);
-    printf("sregs control=%#x\n", sregs->control);
+    // printf("sregs basepri=%#x\n", sregs->basepri);
+    // printf("sregs control=%#x\n", sregs->control);
 
     return 0;
 }
